@@ -7,6 +7,8 @@
 - Briefly describe your initial UML design.
 - What classes did you include, and what responsibilities did you assign to each?
 
+My intial UML design includes 4 classes such as owner, pet, task, and scheduler. Owner has attributes such as first name, last name, age, and pet type. Pet also has attributes like name, age, gender, and animal type. Task include walking, feeding, and taking pet to the vet, and these task go to the owner. For scheduler, the owner has a certain when he has to do these tasks. 
+
 **b. Design changes**
 
 - Did your design change during implementation?
