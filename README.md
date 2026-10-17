@@ -70,18 +70,35 @@ Paste a sample of your app's CLI or Streamlit output here so a reader can see wh
 ## 🧪 Testing PawPal+
 
 ```bash
-# Run the full test suite:
-pytest
-
-# Run with coverage:
-pytest --cov
+python -m pytest
 ```
+
+The 23 tests in [test/test_pawpal.py](test/test_pawpal.py) cover the scheduling logic in `pawpal_system.py`:
+
+- **Basics:** `mark_complete()` changes a task's status, and `Pet.add_task()` increases the pet's task count.
+- **Sorting:** tasks come back in chronological order across multiple pets, even when added out of order. Tasks at the same time are ordered by priority. Completed tasks drop out, and the daily schedule only includes the requested day.
+- **Filtering:** by pet name and by completion status, including an unknown pet and a pet with no tasks.
+- **Recurring tasks:** completing a daily task creates one for the next day, and a weekly task one for the next week. Month rollovers work, details are copied, late completion counts from the completion day, and completing a task twice creates no duplicate.
+- **Conflict detection:** overlapping and identical times are flagged for the same pet and for different pets. Back-to-back tasks, long tasks that cover several others, and tasks that span midnight are handled, and tasks with no pet still produce a warning without crashing.
+- **Empty states:** an owner with no pets or tasks returns empty results instead of errors.
 
 Sample test output:
 
 ```
-# Paste your pytest output here
+============================= test session starts ==============================
+platform darwin -- Python 3.14.5, pytest-9.1.1, pluggy-1.7.0
+rootdir: /Users/viviany/Documents/Projects/AI110-Intro-to-AI/ai110-module2show-pawpal-starter
+plugins: anyio-4.15.1
+collected 23 items
+
+test/test_pawpal.py .......................                              [100%]
+
+============================== 23 passed in 0.02s ==============================
 ```
+
+**Confidence Level: ★★★★☆ (4/5)**
+
+All 23 tests pass and they cover the main behaviors and many edge cases, so I'm confident in the scheduling logic. I'm not giving 5 stars because the Streamlit UI in `app.py` is not covered by automated tests, the scheduler only warns about conflicts and never resolves them, and times are naive (no time zones).
 
 ## 📐 Smarter Scheduling
 

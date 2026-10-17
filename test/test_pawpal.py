@@ -123,3 +123,143 @@ def test_no_conflicts_gives_no_warnings():
     rex.add_task(Task(TaskType.FEED, datetime(2026, 10, 17, 9, 0)))
 
     assert sched.get_conflict_warnings() == []
+
+
+# ---- Edge cases ----
+
+
+def test_owner_with_no_pets_or_tasks_is_safe():
+    sched = Scheduler(Owner("Bob", "Dylan", 25))
+
+    assert sched.get_pending_tasks() == []
+    assert sched.get_daily_schedule(date(2026, 10, 17)) == []
+    assert sched.find_conflicts() == []
+    assert sched.get_conflict_warnings() == []
+
+
+def test_pet_with_no_tasks_is_ignored_by_scheduler():
+    sched, rex, _ = make_scheduler()  # Tom has no tasks
+    task = Task(TaskType.WALK, datetime(2026, 10, 17, 8, 0))
+    rex.add_task(task)
+
+    assert sched.get_pending_tasks() == [task]
+    assert sched.filter_tasks(pet_name="Tom") == []
+
+
+def test_sorting_works_across_pets_when_added_out_of_order():
+    sched, rex, tom = make_scheduler()
+    t3 = Task(TaskType.VET, datetime(2026, 10, 17, 14, 0))
+    t1 = Task(TaskType.WALK, datetime(2026, 10, 17, 7, 0))
+    t2 = Task(TaskType.FEED, datetime(2026, 10, 17, 9, 0))
+    rex.add_task(t3)
+    tom.add_task(t2)
+    rex.add_task(t1)
+
+    assert sched.get_pending_tasks() == [t1, t2, t3]
+
+
+def test_same_time_tasks_ordered_by_priority():
+    sched, rex, tom = make_scheduler()
+    at8 = datetime(2026, 10, 17, 8, 0)
+    low = Task(TaskType.WALK, at8, priority=1)
+    high = Task(TaskType.FEED, at8, priority=3)
+    rex.add_task(low)
+    tom.add_task(high)
+
+    assert sched.get_pending_tasks() == [high, low]
+
+
+def test_completed_tasks_leave_schedule_and_conflicts():
+    sched, rex, _ = make_scheduler()
+    at8 = datetime(2026, 10, 17, 8, 0)
+    a = Task(TaskType.WALK, at8)
+    b = Task(TaskType.FEED, at8)
+    rex.add_task(a)
+    rex.add_task(b)
+    assert len(sched.find_conflicts()) == 1
+
+    a.mark_complete()
+
+    assert sched.get_pending_tasks() == [b]
+    assert sched.find_conflicts() == []
+
+
+def test_daily_schedule_only_includes_requested_day():
+    sched, rex, _ = make_scheduler()
+    today = Task(TaskType.WALK, datetime(2026, 10, 17, 8, 0))
+    tomorrow = Task(TaskType.WALK, datetime(2026, 10, 18, 8, 0))
+    rex.add_task(today)
+    rex.add_task(tomorrow)
+
+    assert sched.get_daily_schedule(date(2026, 10, 17)) == [today]
+
+
+def test_recurrence_crosses_month_boundary():
+    _, rex, _ = make_scheduler()
+    daily = Task(TaskType.WALK, datetime(2026, 10, 31, 8, 0), recurrence=Recurrence.DAILY)
+    rex.add_task(daily)
+
+    assert daily.mark_complete(today=date(2026, 10, 31)).due_time == datetime(2026, 11, 1, 8, 0)
+
+
+def test_next_occurrence_copies_task_details():
+    _, rex, _ = make_scheduler()
+    walk = Task(
+        TaskType.WALK, datetime(2026, 10, 17, 8, 0), duration_minutes=45, priority=3,
+        recurrence=Recurrence.DAILY,
+    )
+    rex.add_task(walk)
+
+    nxt = walk.mark_complete(today=date(2026, 10, 17))
+
+    assert (nxt.task_type, nxt.duration_minutes, nxt.priority, nxt.recurrence) == (
+        TaskType.WALK, 45, 3, Recurrence.DAILY,
+    )
+    assert nxt.pet is rex
+
+
+def test_back_to_back_tasks_do_not_conflict():
+    sched, rex, _ = make_scheduler()
+    rex.add_task(Task(TaskType.WALK, datetime(2026, 10, 17, 8, 0), duration_minutes=30))
+    rex.add_task(Task(TaskType.FEED, datetime(2026, 10, 17, 8, 30)))  # starts as walk ends
+
+    assert sched.find_conflicts() == []
+
+
+def test_long_task_conflicts_with_every_task_it_covers():
+    sched, rex, _ = make_scheduler()
+    long = Task(TaskType.VET, datetime(2026, 10, 17, 8, 0), duration_minutes=120)
+    a = Task(TaskType.FEED, datetime(2026, 10, 17, 8, 30))
+    b = Task(TaskType.WALK, datetime(2026, 10, 17, 9, 0))  # not adjacent to long in the list
+    for t in (long, a, b):
+        rex.add_task(t)
+
+    assert (long, a) in sched.find_conflicts() and (long, b) in sched.find_conflicts()
+
+
+def test_conflict_across_midnight():
+    sched, rex, _ = make_scheduler()
+    late = Task(TaskType.VET, datetime(2026, 10, 17, 23, 30), duration_minutes=60)
+    early = Task(TaskType.FEED, datetime(2026, 10, 18, 0, 15))
+    rex.add_task(late)
+    rex.add_task(early)
+
+    assert sched.find_conflicts() == [(late, early)]
+
+
+def test_unassigned_task_warning_does_not_crash():
+    sched, rex, _ = make_scheduler()
+    at8 = datetime(2026, 10, 17, 8, 0)
+    rex.add_task(Task(TaskType.WALK, at8))
+    sched.owner.pets.append(Pet("Ghost", 1, "x", "cat"))
+    # A task attached to a pet's list directly, without pet link set.
+    sched.owner.pets[-1].tasks.append(Task(TaskType.FEED, at8))
+
+    assert "unassigned" in sched.get_conflict_warnings()[0]
+
+
+def test_filter_unknown_pet_returns_empty_list():
+    sched, rex, _ = make_scheduler()
+    rex.add_task(make_task())
+
+    assert sched.filter_tasks(pet_name="Nobody") == []
