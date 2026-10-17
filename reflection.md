@@ -28,6 +28,10 @@ Yea, my design change during implementation. In the UML diagram, I extended the 
 - Describe one tradeoff your scheduler makes.
 - Why is that tradeoff reasonable for this scenario?
 
+My scheduler only *detects* conflicts and warns the owner; it does not automatically move or drop tasks to resolve them. `get_conflict_warnings()` finds overlapping tasks (using start time plus duration, not just identical start times) and returns readable messages, but it leaves the schedule unchanged. I also kept the conflict check simple: it compares every pair of pending tasks (`itertools.combinations`) instead of using a faster early-exit loop. When I reviewed it, the faster loop was about 12x quicker at 1,000 tasks but returned the same results, so I chose the shorter version that reuses `Task.overlaps()` and is easier to read.
+
+This is reasonable for a pet owner because they have a few dozen tasks at most, so the speed difference is microseconds, while readability matters more. And only warning is safer than auto-resolving: the scheduler can't know whether a vet visit should beat a walk (priority alone doesn't capture that), so the owner makes the final call.
+
 ---
 
 ## 3. AI Collaboration

@@ -39,7 +39,7 @@ classDiagram
         +int priority
         +Recurrence recurrence
         +bool completed
-        +mark_complete() Task
+        +mark_complete(today) Task
         +overlaps(other) bool
         +end_time datetime
     }
@@ -47,8 +47,13 @@ classDiagram
     class Scheduler {
         +Owner owner
         +get_daily_schedule(day) List~Task~
+        +sort_by_time(tasks) List~Task~
+        +filter_tasks(pet_name, completed, task_type) List~Task~
         +get_pending_tasks() List~Task~
+        +complete_task(task) Task
         +find_conflicts() List~Task_pair~
+        +conflicts_with(task) List~Task~
+        +get_conflict_warnings() List~str~
     }
 
     Owner "1" --> "*" Pet : owns
