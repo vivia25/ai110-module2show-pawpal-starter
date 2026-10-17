@@ -13,7 +13,7 @@ My intial UML design includes 4 classes such as owner, pet, task, and scheduler.
 
 - Did your design change during implementation?
 - If yes, describe at least one change and why you made it.
-
+Yea, my design change during implementation. In the UML diagram, I extended the task to include reoccurence class with attributes like daily and weekly. This is to add timing to the task.
 ---
 
 ## 2. Scheduling Logic and Tradeoffs

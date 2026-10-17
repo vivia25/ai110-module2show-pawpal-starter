@@ -1,12 +1,24 @@
 classDiagram
+    class TaskType {
+        <<enumeration>>
+        WALK
+        FEED
+        VET
+    }
+
+    class Recurrence {
+        <<enumeration>>
+        DAILY
+        WEEKLY
+    }
+
     class Owner {
         +str first_name
         +str last_name
         +int age
-        +str pet_type
         +List~Pet~ pets
         +add_pet(pet) void
-        +get_tasks() List~Task~
+        +get_all_tasks() List~Task~
     }
 
     class Pet {
@@ -19,22 +31,30 @@ classDiagram
     }
 
     class Task {
-        +str task_type
-        +str description
+        +TaskType task_type
         +datetime due_time
+        +Pet pet
+        +str description
+        +int duration_minutes
+        +int priority
+        +Recurrence recurrence
         +bool completed
-        +mark_complete() void
+        +mark_complete() Task
+        +overlaps(other) bool
+        +end_time datetime
     }
 
     class Scheduler {
         +Owner owner
-        +List~Task~ schedule
-        +schedule_task(task, time) void
-        +get_daily_schedule() List~Task~
+        +get_daily_schedule(day) List~Task~
+        +get_pending_tasks() List~Task~
+        +find_conflicts() List~Task_pair~
     }
 
     Owner "1" --> "*" Pet : owns
     Pet "1" --> "*" Task : has
-    Owner "1" --> "*" Task : responsible for
+    Task "*" --> "1" Pet : belongs to
+    Task --> TaskType
+    Task --> Recurrence
     Scheduler "1" --> "1" Owner : schedules for
-    Scheduler "1" --> "*" Task : organizes
+    Scheduler ..> Task : reads via owner.get_all_tasks()
