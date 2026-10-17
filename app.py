@@ -1,7 +1,7 @@
 import streamlit as st
 from datetime import date, datetime, time
 
-from pawpal_system import Owner, Pet, Scheduler, Task, TaskType
+from pawpal_system import Owner, Pet, Recurrence, Scheduler, Task, TaskType
 
 st.set_page_config(page_title="PawPal+", page_icon="🐾", layout="centered")
 
@@ -68,10 +68,28 @@ if owner.pets:
 else:
     st.info("No pets yet. Add one above.")
 
+scheduler = Scheduler(owner)
+
+
+def task_rows(tasks):
+    """Turn tasks into table rows for st.table."""
+    return [
+        {
+            "Time": f"{t.due_time:%H:%M}-{t.end_time:%H:%M}",
+            "Pet": t.pet.name,
+            "Task": t.task_type.value,
+            "Priority": t.priority,
+            "Repeats": t.recurrence.value if t.recurrence else "-",
+            "Status": "Done" if t.completed else "To do",
+        }
+        for t in tasks
+    ]
+
+
 st.subheader("Tasks")
 if owner.pets:
     pet_choice = st.selectbox("For pet", [p.name for p in owner.pets])
-    col1, col2, col3, col4 = st.columns(4)
+    col1, col2, col3, col4, col5 = st.columns(5)
     with col1:
         task_type = st.selectbox("Type", [t.value for t in TaskType])
     with col2:
@@ -80,56 +98,81 @@ if owner.pets:
         duration = st.number_input("Minutes", min_value=1, max_value=240, value=20)
     with col4:
         priority = st.selectbox("Priority", [1, 2, 3], index=2)
+    with col5:
+        repeat = st.selectbox("Repeats", ["none", "daily", "weekly"])
 
     if st.button("Add task"):
         pet = next(p for p in owner.pets if p.name == pet_choice)
-        pet.add_task(
-            Task(
-                TaskType(task_type),
-                datetime.combine(date.today(), start),
-                duration_minutes=int(duration),
-                priority=priority,
-            )
+        new_task = Task(
+            TaskType(task_type),
+            datetime.combine(date.today(), start),
+            duration_minutes=int(duration),
+            priority=priority,
+            recurrence=Recurrence(repeat) if repeat != "none" else None,
         )
-
-all_tasks = owner.get_all_tasks()
-if all_tasks:
-    st.table(
-        [
-            {
-                "pet": t.pet.name,
-                "type": t.task_type.value,
-                "time": f"{t.due_time:%H:%M}",
-                "minutes": t.duration_minutes,
-                "priority": t.priority,
-            }
-            for t in all_tasks
-        ]
-    )
+        overlaps = scheduler.conflicts_with(new_task)  # check before adding
+        pet.add_task(new_task)
+        if overlaps:
+            clashes = ", ".join(f"{t.task_type.value} for {t.pet.name} at {t.due_time:%H:%M}" for t in overlaps)
+            st.warning(f"Added {task_type} for {pet.name}, but it overlaps: {clashes}")
+        else:
+            st.success(f"Added {task_type} for {pet.name} at {start:%H:%M}")
 else:
-    st.info("No tasks yet.")
+    st.info("Add a pet first, then you can add tasks.")
 
-pending = Scheduler(owner).get_pending_tasks()
+if "flash" in st.session_state:  # message saved across the rerun below
+    st.success(st.session_state.pop("flash"))
+
+pending = scheduler.get_pending_tasks()
 if pending:
     labels = [f"{t.due_time:%a %H:%M} {t.task_type.value} ({t.pet.name})" for t in pending]
     done_label = st.selectbox("Mark a task complete", labels)
     if st.button("Mark complete"):
-        next_task = Scheduler(owner).complete_task(pending[labels.index(done_label)])
+        next_task = scheduler.complete_task(pending[labels.index(done_label)])
         if next_task:
-            st.success(f"Done! Next {next_task.recurrence.value} task: {next_task.due_time:%a %b %d, %H:%M}")
+            st.session_state.flash = (
+                f"Done! Next {next_task.recurrence.value} task scheduled for "
+                f"{next_task.due_time:%a %b %d, %H:%M}"
+            )
         else:
-            st.success("Done!")
+            st.session_state.flash = "Done!"
         st.rerun()
 
 st.divider()
 
-st.subheader("Build Schedule")
-if st.button("Generate schedule"):
-    scheduler = Scheduler(owner)
-    plan = scheduler.get_daily_schedule(date.today())
-    if not plan:
-        st.warning("Nothing scheduled for today.")
-    for t in plan:
-        st.write(f"{t.due_time:%H:%M} - {t.task_type.value} ({t.pet.name}, {t.duration_minutes} min)")
-    for warning in scheduler.get_conflict_warnings():
+st.subheader("All tasks")
+col1, col2 = st.columns(2)
+with col1:
+    pet_filter = st.selectbox("Show pet", ["All"] + [p.name for p in owner.pets])
+with col2:
+    status_filter = st.selectbox("Show status", ["All", "To do", "Done"])
+
+shown = scheduler.filter_tasks(
+    pet_name=None if pet_filter == "All" else pet_filter,
+    completed={"All": None, "To do": False, "Done": True}[status_filter],
+)  # already sorted by time
+if shown:
+    st.caption(f"{len(shown)} task(s), sorted by time")
+    st.table(task_rows(shown))
+else:
+    st.info("No tasks match.")
+
+st.subheader("Conflicts")
+conflict_warnings = scheduler.get_conflict_warnings()
+if conflict_warnings:
+    for warning in conflict_warnings:
         st.warning(warning)
+elif pending:
+    st.success("No scheduling conflicts.")
+else:
+    st.info("Nothing to check yet.")
+
+st.divider()
+
+st.subheader("Today's Schedule")
+plan = scheduler.get_daily_schedule(date.today())
+if plan:
+    st.table(task_rows(plan))
+    st.caption(f"{len(plan)} task(s), {sum(t.duration_minutes for t in plan)} minutes of pet care today")
+else:
+    st.info("Nothing scheduled for today.")
